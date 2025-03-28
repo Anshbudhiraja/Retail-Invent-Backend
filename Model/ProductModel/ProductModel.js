@@ -1,0 +1,43 @@
+const mongoose = require("mongoose")
+require("dotenv").config()
+const BaseSchema = new mongoose.Schema({
+    userId:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:process.env.MONGODB_USER_COLLECTION,
+        required:true,
+    },
+    name:{
+        type:String,
+        required:true
+    },
+    price:{
+        type:String,
+        required:true
+    },
+    description:{
+        type:String,
+        default:null
+    },
+    stock:{
+        type:Number,
+        default:0
+    },
+    subSubCategory:{
+        type:mongoose.Schema.Types.ObjectId,
+        ref:process.env.CATEGORY_COLLECTION,
+        required:true
+    },
+    size:{
+       type:{
+        length:{type:Number,required:true},
+        breadth:{type:Number,required:true}
+       },
+       default:null
+    },
+    options:{
+        type:Object,
+        default:null
+    }
+},{timestamps:true})
+const Product = mongoose.model(process.env.PRODUCT_COLLECTION,BaseSchema)
+module.exports=Product
