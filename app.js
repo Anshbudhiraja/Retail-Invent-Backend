@@ -11,4 +11,4 @@ Connection()
 const HOST = '0.0.0.0'
 
 app.use("/api",Routes)
-app.listen(process.env.PORT || 3010,HOST,()=>console.log("Server Started At:"+process.env.PORT || 3010))
+app.listen(process.env.PORT || 3010,HOST,()=>console.log("Server Started At:"+process.env.PORT))
