@@ -720,6 +720,7 @@ Routes.post("/addSizes/:subSubCategory",adminChecker,async(req,resp)=>{
     const {length,breadth} =req.body
     if(!length) return handleResponse(resp,400,"Length is required")
     if(!breadth) return handleResponse(resp,400,"Breadth is required")
+    if(length<=0 || breadth<=0) return handleResponse(resp,400,"Invalid Length and Breadth")
     
     const existingSubSubCategory = await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id}).select("-image")
     if(!existingSubSubCategory) return handleResponse(resp,404,"This category is not exists in your list.")
@@ -728,7 +729,7 @@ Routes.post("/addSizes/:subSubCategory",adminChecker,async(req,resp)=>{
       await existingSubSubCategory.save()
     }
     const newSize=new Size({userId:req.user._id,subSubCategory:existingSubSubCategory._id,
-      length:parseInt(length),breadth:parseInt(breadth)
+      length:parseFloat(length),breadth:parseFloat(breadth)
     })
     await newSize.save()
     return handleResponse(resp,201,"New Size updated!")
@@ -775,13 +776,14 @@ Routes.delete("/deleteSize/:sizeId",adminChecker,async(req,resp)=>{
   }
 })
 
+
 // products
 const validateProductInfo=(object,fields)=>{
   const objectKeys=Object.keys(object)
   const fieldKeys=fields.map(field=>field.name)
-  
+
   for (const key of fieldKeys) {
-    if (!object.hasOwnProperty(key) || object[key] === null || object[key] === '') return "The key "+key+" is missing or empty."
+    if (object[key] === null || object[key] === '') return "The key "+key+" is missing or empty."
   }
 
   for (const key of objectKeys) {
@@ -794,47 +796,67 @@ Routes.post("/addProduct/:subSubCategory",adminChecker,async(req,resp)=>{
     const {subSubCategory}=req.params
     if(!subSubCategory || !mongoose.isValidObjectId(subSubCategory)) return handleResponse(resp,400,"Invalid Category Id")
 
-    const {name,price,description,options}=req.body
-    
+    const {name,price,description,options,size}=req.body
+
     if(!name) return handleResponse(resp,404,"Product Name is required")
     if(!price) return handleResponse(resp,404,"Product Price is required") 
     if(price<0) return handleResponse(resp,400,"Product Price is Invalid")
-    
+
     const existingSubSubCategory = await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id}).select("-image")
     if(!existingSubSubCategory) return handleResponse(resp,404,"This category is not exists in your list.")
-  
-    // checking schemaid whether null or not  (if null no options and if not options required)
-    // here options are required
-    if(existingSubSubCategory.schemaId!==null && mongoose.isValidObjectId(existingSubSubCategory.schemaId)){
-      // finding schema from schemadefinition collection
-      const existingSchema=await SchemaDefinition.findOne({_id:existingSubSubCategory.schemaId,userId:req.user._id})
-      if(existingSchema && existingSchema.fields){
-        // fields present in database, now checking options
-        if(!options || Object.keys(options).length===0) return handleResponse(resp,404,"Select the correct options")
-        // validating options from saved schema fields
-        const validationError= validateProductInfo(options,existingSchema.fields)
-        if(validationError) return handleResponse(resp,400,validationError)
+    
+    if(existingSubSubCategory.hasSize){
+      if(!size) return handleResponse(resp,400,"Size is required")
+      if(Object.keys(size).length!==2) return handleResponse(resp,400,"Invalid Size Parameters")
+      if(!size.length || !size.breadth) return handleResponse(resp,400,"Length and Breadth are required")
+      if(size.length<=0 || size.breadth<=0) return handleResponse(resp,400,"Invalid Length and Breadth")
+      size.length=parseFloat(size.length)
+      size.breadth=parseFloat(size.breadth)
+    }
 
-        // checking field values if any
-        const valuesError=[]
-        const fields=existingSchema.fields
-        for(const index in fields){
-          if(fields[index].values){
-            const key=fields[index].name
-            const values=fields[index].values
-            if(!values.includes(options[key])) valuesError.push({index,key,message:`The ${options[key]} value you have entered for ${key} option is not declared in your default values.`})
-          }
+    if(existingSubSubCategory.schemaId && options && Object.keys(options).length>0){
+      // finding schema from collection
+      const existingSchema=await SchemaDefinition.findOne({_id:existingSubSubCategory.schemaId,userId:req.user._id})
+      if(!existingSchema || !existingSchema.fields) return handleResponse(resp,400,"Variants of this category are not exists")
+
+      // fields present in database, now checking options
+      // validating options from saved schema fields
+      const validationError= validateProductInfo(options,existingSchema.fields)
+      if(validationError) return handleResponse(resp,400,validationError)
+      // checking field values if any
+      const valuesError=[]
+      const fields=existingSchema.fields
+      for(const index in fields){
+        if(fields[index].values){
+          const key=fields[index].name
+          const values=fields[index].values
+          if(options[key] && !values.includes(options[key])) valuesError.push({index,key,message:`The ${options[key]} value you have entered for ${key} option is not declared in your default values.`})
         }
-        if(valuesError.length>0) return handleResponse(resp,400,"Values not matched to default values",valuesError)
-      
+      }
+      if(valuesError.length>0) return handleResponse(resp,400,"Values not matched to default values",valuesError)
+
+      if(existingSubSubCategory.hasSize){
         const newProduct= new Product({
-          name,price,description,subSubCategory,options,userId:req.user._id
+          name,price,description,subSubCategory,size,options,userId:req.user._id
         })
         await newProduct.save()
-        return handleResponse(resp,201,"Product saved successfully",newProduct)
+        return handleResponse(resp,201,"Product saved successfully",newProduct)  
       }
+      const newProduct= new Product({
+        name,price,description,subSubCategory,options,userId:req.user._id
+      })
+      await newProduct.save()
+      return handleResponse(resp,201,"Product saved successfully",newProduct)
     }
+
     // here if fields not present in database
+    if(existingSubSubCategory.hasSize){
+      const newProduct= new Product({
+        name,price,description,size,subSubCategory,userId:req.user._id
+      })
+      await newProduct.save()
+      return handleResponse(resp,201,"Product saved successfully",newProduct)
+    }
     const newProduct= new Product({
       name,price,description,subSubCategory,userId:req.user._id
     })
