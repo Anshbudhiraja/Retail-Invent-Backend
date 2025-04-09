@@ -20,6 +20,10 @@ const BaseSchema= new mongoose.Schema({
         type:Date,
         default:Date.now
     },
+    message:{
+        type:String,
+        default:null
+    },
     type:{
         type:String,
         required:true,
@@ -46,9 +50,9 @@ const RateSchema = new mongoose.Schema({
         ref:process.env.VENDOR_COLLECTION,
         required:true,
     },
-    message:{
+    vendorName:{
         type:String,
-        default:null
+        required:true,
     }
 })
 const PurchaseSchema = new mongoose.Schema({
@@ -68,7 +72,11 @@ const PurchaseSchema = new mongoose.Schema({
         type:mongoose.Schema.Types.ObjectId,
         ref:process.env.VENDOR_COLLECTION,
         required:true,
-    },
+    }, 
+    vendorName:{
+        type:String,
+        required:true,
+    }
 })
 const SaleSchema = new mongoose.Schema({
     quantity:{
@@ -94,6 +102,10 @@ const ReturnSchema = new mongoose.Schema({
         ref:process.env.VENDOR_COLLECTION,
         required:true,
     },
+    vendorName:{
+        type:String,
+        required:true,
+    }
 })
 const Rate = StockHistory.discriminator("Rate",RateSchema)
 const Purchase = StockHistory.discriminator("Purchase",PurchaseSchema)

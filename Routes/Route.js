@@ -584,6 +584,20 @@ Routes.delete("/deleteVendor/:vendorId",adminChecker,async(req,resp)=>{
     return handleError(resp,error)
   }
 })
+Routes.delete("/deleteAllVendors/:subSubCategory",adminChecker,async(req,resp)=>{
+  try {
+    const {subSubCategory}=req.params
+    if(!subSubCategory || !mongoose.isValidObjectId(subSubCategory)) return handleResponse(resp,404,"Invalid Category Id")
+
+    const existingSubSubCategory=await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id}).select("-image")
+    if(!existingSubSubCategory) return handleResponse(resp,404,"This Category is not exists in your list.")
+    
+    const result=await Vendor.deleteMany({subSubCategory:existingSubSubCategory._id,userId:req.user._id})
+    return handleResponse(resp,202,`${result.deletedCount} Vendors deleted!`)
+  } catch (error) {
+    return handleError(resp,error)
+  }
+})
 Routes.put("/updateVendor/:vendorId",adminChecker,async(req,resp)=>{
   try {
     const {vendorId}=req.params
@@ -625,6 +639,7 @@ const validateObjectKeys=(object)=>{
   
   if(object.values){
     if(!Array.isArray(object.values) || object.values.length===0) return "Default Values are required."
+    if(object.values.length>10) return "Only 10 values are allowed!"
     if(object.values.some(item => !item || typeof item !== "string")) return "Default values are invalid"
     const uniqueValues = new Set(object.values);
     if(uniqueValues.size !== object.values.length) return "Duplicate values are not allowed.";
@@ -655,7 +670,8 @@ Routes.post("/createOptions/:subSubCategory",adminChecker,async (req, resp) => {
 
       const { fields } = req.body;
       if(!fields || !Array.isArray(fields) || fields.length===0) return handleResponse(resp,404,"Options are required")
-
+      if(fields.length>5) return handleResponse(resp,400,"You can only create 5 options")
+        
       const errors=[]
       for(const index in fields){
         const validationError= validateObjectKeys(fields[index])
@@ -681,10 +697,13 @@ Routes.post("/createOptions/:subSubCategory",adminChecker,async (req, resp) => {
       const existingSchema = await SchemaDefinition.findOne({_id:existingSubSubCategory.schemaId,userId:req.user._id})
       if(!existingSchema) return handleResponse(resp,400,"More Options are not created")
 
-      const duplicateFields= validateDuplicateValues([...existingSchema.fields,...fields])
+      const newfields=[...existingSchema.fields,...fields]
+      if(newfields.length>5) return handleResponse(resp,400,"Options Limit Exceed!")
+
+      const duplicateFields= validateDuplicateValues(newfields)
       if(duplicateFields) return handleResponse(resp,400,"You cannot create duplicate Options")
 
-      existingSchema.fields=[...existingSchema.fields,...fields]
+      existingSchema.fields=newfields
       await existingSchema.save()
       return handleResponse(resp,201,"New Options created successfully")
   } catch (error) {
@@ -706,6 +725,58 @@ Routes.get("/getAllOptions/:subSubCategory",adminChecker,async(req,resp)=>{
     if(!existingSchema) return handleResponse(resp,200,"Options for this Category are not present in your list.")
     
     return handleResponse(resp,202,"Options loaded successfully",existingSchema.fields)
+  } catch (error) {
+    return handleError(resp,error)
+  }
+})
+Routes.delete("/deleteOption/:subSubCategory",adminChecker,async(req,resp)=>{
+  try {
+    const {subSubCategory}=req.params
+    if(!subSubCategory || !mongoose.isValidObjectId(subSubCategory)) return handleResponse(resp,404,"Invalid Category Id")
+    
+    const {name} = req.body // option name
+    if(!name) return handleResponse(resp,400,"Option name is required")
+
+    const existingSubSubCategory = await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id}).select("-image")
+    if(!existingSubSubCategory) return handleResponse(resp,404,"This category is not exists in your list")
+
+    if(!existingSubSubCategory.schemaId) return handleResponse(resp,404,"This option is not present in the list")
+      
+    const existingSchema=await SchemaDefinition.findOne({_id:existingSubSubCategory.schemaId,userId:req.user._id})
+    if(!existingSchema) return handleResponse(resp,404,"This option is not present in the list")
+      
+    if(existingSchema.fields.some(field => field.name !== name)) return handleResponse(resp,404,"This option is not present in the list")
+    
+    if(existingSchema.fields.length===1){
+     await SchemaDefinition.deleteOne({_id:existingSchema._id,userId:req.user._id})
+     existingSubSubCategory.schemaId=null
+     await existingSubSubCategory.save()
+     return handleResponse(resp,202,"Option deleted successfully!")
+    }
+    existingSchema.fields = existingSchema.fields.filter(field => field.name !== name);
+    await existingSchema.save()
+    return handleResponse(resp,202,"Options deleted successfully")
+  } catch (error) {
+    return handleError(resp,error)
+  }
+})
+Routes.delete("/deleteAllOptions/:subSubCategory",adminChecker,async(req,resp)=>{
+  try {
+    const {subSubCategory}=req.params
+    if(!subSubCategory || !mongoose.isValidObjectId(subSubCategory)) return handleResponse(resp,404,"Invalid Category Id")
+
+    const existingSubSubCategory = await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id}).select("-image")
+    if(!existingSubSubCategory) return handleResponse(resp,404,"This category is not exists in your list")
+
+    if(!existingSubSubCategory.schemaId) return handleResponse(resp,404,"The options are not present in the list")
+      
+    const existingSchema=await SchemaDefinition.findOne({_id:existingSubSubCategory.schemaId,userId:req.user._id})
+    if(!existingSchema) return handleResponse(resp,404,"The options are not present in the list")
+      
+    await SchemaDefinition.deleteOne({_id:existingSchema._id,userId:req.user._id})
+    existingSubSubCategory.schemaId=null
+    await existingSubSubCategory.save()
+    return handleResponse(resp,202,"Options deleted successfully!")
   } catch (error) {
     return handleError(resp,error)
   }
@@ -912,14 +983,22 @@ Routes.delete("/deleteAllProducts/:subSubCategory",adminChecker,async(req,resp)=
   }
 })
 
+// checking past/today date
+const isPastOrToday = (inputDate) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Normalize time
+  const date = new Date(inputDate);
+  date.setHours(0, 0, 0, 0);
 
+  return date <= today;
+};
 // purchase
 Routes.post("/addStock/:productId",adminChecker,async(req,resp)=>{
   try {
     const {productId} = req.params
     if(!productId || !mongoose.isValidObjectId(productId)) return handleResponse(resp,404,"Invalid Product Id")
 
-    const {stock,vendor,cost,date,othercharges} = req.body
+    const {stock,vendor,cost,date,othercharges,message} = req.body
     if(!vendor || vendor==="none") return handleResponse(resp,400,"Select the vendor")
     if(!cost) return handleResponse(resp,400,"Cost is required")
     if(!stock) return handleResponse(resp,404,"Stock is required")
@@ -927,6 +1006,8 @@ Routes.post("/addStock/:productId",adminChecker,async(req,resp)=>{
     if(stock<=0) return handleResponse(resp,400,"Stock Value is invalid.")
     if(othercharges<0) return handleResponse(resp,400,"GST and other charges is invalid.")
     if(!mongoose.isValidObjectId(vendor)) return handleResponse(resp,400,"Invalid Vendor Id.")
+
+    if(date && !isPastOrToday(date)) return handleResponse(resp,400,"Date must not be in the future.")
 
     const existingProduct = await Product.findOne({_id:productId,userId:req.user._id})
     if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list.")
@@ -939,13 +1020,13 @@ Routes.post("/addStock/:productId",adminChecker,async(req,resp)=>{
     await existingProduct.save()
     if(date){
       const newPurchase = new Purchase({
-        productId:existingProduct._id,vendorId:existingVendor._id,subSubCategory:existingSubSubCategory._id,
+        productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,subSubCategory:existingSubSubCategory._id,
         cost,otherCharges:othercharges,date:new Date(date),quantity:stock,userId:req.user._id
       })
       await newPurchase.save()
     } else{
       const newPurchase = new Purchase({
-        productId:existingProduct._id,vendorId:existingVendor._id,subSubCategory:existingSubSubCategory._id,
+        productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,subSubCategory:existingSubSubCategory._id,
         cost,otherCharges:othercharges,quantity:stock,userId:req.user._id
       })
       await newPurchase.save()
@@ -970,6 +1051,8 @@ Routes.post("/addRate/:productId",adminChecker,async(req,resp)=>{
     if(othercharges<0) return handleResponse(resp,400,"GST and other charges is invalid.")
     if(!mongoose.isValidObjectId(vendor)) return handleResponse(resp,400,"Invalid Vendor Id.")
     
+    if(date && !isPastOrToday(date)) return handleResponse(resp,400,"Date must not be in the future.")
+    
     const existingProduct = await Product.findOne({_id:productId,userId:req.user._id})
     if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list.")
 
@@ -978,13 +1061,13 @@ Routes.post("/addRate/:productId",adminChecker,async(req,resp)=>{
 
     if(date){
       const newRate = new Rate({
-        productId:existingProduct._id,vendorId:existingVendor._id,message,subSubCategory:existingProduct.subSubCategory,
+        productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,subSubCategory:existingProduct.subSubCategory,
         cost,otherCharges:othercharges,date:new Date(date),quantity:stock,userId:req.user._id
       })
       await newRate.save()
     } else {
       const newRate = new Rate({
-        productId:existingProduct._id,vendorId:existingVendor._id,message,subSubCategory:existingProduct.subSubCategory,
+        productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,subSubCategory:existingProduct.subSubCategory,
         cost,otherCharges:othercharges,quantity:stock,userId:req.user._id
       })
       await newRate.save()
