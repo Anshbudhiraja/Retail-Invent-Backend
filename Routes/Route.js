@@ -745,7 +745,7 @@ Routes.delete("/deleteOption/:subSubCategory",adminChecker,async(req,resp)=>{
     const existingSchema=await SchemaDefinition.findOne({_id:existingSubSubCategory.schemaId,userId:req.user._id})
     if(!existingSchema) return handleResponse(resp,404,"This option is not present in the list")
       
-    if(existingSchema.fields.some(field => field.name !== name)) return handleResponse(resp,404,"This option is not present in the list")
+    if(!existingSchema.fields.some(field => field.name === name)) return handleResponse(resp,404,"This option is not present in the list")
     
     if(existingSchema.fields.length===1){
      await SchemaDefinition.deleteOne({_id:existingSchema._id,userId:req.user._id})
@@ -777,6 +777,35 @@ Routes.delete("/deleteAllOptions/:subSubCategory",adminChecker,async(req,resp)=>
     existingSubSubCategory.schemaId=null
     await existingSubSubCategory.save()
     return handleResponse(resp,202,"Options deleted successfully!")
+  } catch (error) {
+    return handleError(resp,error)
+  }
+})
+Routes.put("/updateOptionValues/:schemaId",adminChecker,async(req,resp)=>{
+  try {
+    const {schemaId} = req.params
+    if(!schemaId || !mongoose.isValidObjectId(schemaId)) return handleResponse(resp,400,"Invalid Schema Id")
+    
+    const {name,values} = req.body
+    if(!name) return handleResponse(resp,400,"Option Name is required")
+    if(!values) return handleResponse(resp,400,"Option values are required")
+
+    if(!Array.isArray(values) || values.length===0) return handleResponse(resp,400,"Default Values are required.")
+    if(values.length>10) return handleResponse(resp,400,"Only 10 values are allowed!")
+    if(values.some(item => !item || typeof item !== "string")) return handleResponse(resp,400,"Default values are invalid")
+    const uniqueValues = new Set(values);
+    if(uniqueValues.size !== values.length) return handleResponse(resp,400,"Duplicate values are not allowed.")
+
+    const existingSchema = await SchemaDefinition.findOne({_id:schemaId,userId:req.user._id})
+    if(!existingSchema) return handleResponse(resp,400,"This schema is not available in your list")
+    
+    const existingOption = existingSchema.fields.find(field => field.name === name);
+    if(!existingOption) return handleResponse(resp,404,"This option is not present in the list")
+    if(!existingOption.values) return handleResponse(resp,404,"This option does not contain values")
+    existingOption.values=values
+    existingSchema.markModified('fields');
+    await existingSchema.save()
+    return handleResponse(resp,202,"Option values updated!")
   } catch (error) {
     return handleError(resp,error)
   }
@@ -982,7 +1011,71 @@ Routes.delete("/deleteAllProducts/:subSubCategory",adminChecker,async(req,resp)=
     return handleError(resp,error)
   }
 })
+Routes.put("/updateProduct/:subSubCategory/:productId",adminChecker,async(req,resp)=>{
+  try {
+    const {subSubCategory,productId} = req.params
 
+    const {name,price,description,size,options} = req.body
+
+    if(!subSubCategory || !mongoose.isValidObjectId(subSubCategory)) return handleResponse(resp,400,"Invalid Category Id")
+    if(!productId || !mongoose.isValidObjectId(productId)) return handleResponse(resp,400,"Invalid Product Id")
+    
+    if(!name || !price) return handleResponse(resp,400,"Product Name and Price is required")
+    if(price<0) return handleResponse(resp,400,"Product Price is Invalid")
+
+    const existingSubSubCategory= await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id}).select("-image")
+    if(!existingSubSubCategory) return handleResponse(resp,404,"This category is not exists in your list.")
+    
+    if(existingSubSubCategory.hasSize){
+      if(!size) return handleResponse(resp,400,"Size is required")
+      if(Object.keys(size).length!==2) return handleResponse(resp,400,"Invalid Size Parameters")
+      if(!size.length || !size.breadth) return handleResponse(resp,400,"Length and Breadth are required")
+      if(size.length<=0 || size.breadth<=0) return handleResponse(resp,400,"Invalid Length and Breadth")
+      size.length=parseFloat(size.length)
+      size.breadth=parseFloat(size.breadth)
+    }
+
+    const existingProduct = await Product.findOne({_id:productId,userId:req.user._id})
+    if(!existingProduct) return handleResponse(resp,404,"This product is not available in your list")
+
+    if(existingSubSubCategory.schemaId && options && Object.keys(options).length>0){
+
+      const existingSchema=await SchemaDefinition.findOne({_id:existingSubSubCategory.schemaId,userId:req.user._id})
+      if(!existingSchema || !existingSchema.fields) return handleResponse(resp,400,"Variants of this category are not exists")
+      
+      const validationError= validateProductInfo(options,existingSchema.fields)
+      if(validationError) return handleResponse(resp,400,validationError)
+      
+      const valuesError=[]
+      const fields=existingSchema.fields
+      for(const index in fields){
+        if(fields[index].values){
+          const key=fields[index].name
+          const values=fields[index].values
+          if(options[key] && !values.includes(options[key])) valuesError.push({index,key,message:`The ${options[key]} value you have entered for ${key} option is not declared in your default values.`})
+        }
+      }
+      if(valuesError.length>0) return handleResponse(resp,400,"Values not matched to default values",valuesError)
+      
+      existingProduct.name=name
+      existingProduct.price=price
+      if(description) existingProduct.description=description
+      existingProduct.options=options
+      if(existingSubSubCategory.hasSize) existingProduct.size=size
+      await existingProduct.save()
+      return handleResponse(resp,202,"Product updated successfully")
+    }
+    
+    existingProduct.name=name
+    existingProduct.price=price
+    if(description) existingProduct.description=description
+    if(existingSubSubCategory.hasSize) existingProduct.size=size
+    await existingProduct.save()
+    return handleResponse(resp,202,"Product updated successfully")
+  } catch (error) {
+    return handleError(resp,error)
+  }
+})
 // checking past/today date
 const isPastOrToday = (inputDate) => {
   const today = new Date();
