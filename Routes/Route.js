@@ -311,20 +311,25 @@ Routes.post("/createMainCategory",adminChecker,uploadMainCategory.single("image"
       return handleResponse(resp, 404, "Category Name is required");
     }
 
-    if (!req.file) {
-      return handleResponse(resp, 404, "Category Image is required");
-    }
-
     // Check if category already exists
     const existingMainCategory = await MainCategory.findOne({ name,userId });
     if (existingMainCategory) {
-      fs.unlinkSync(`uploads/Category/MainCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+      if(req.file) fs.unlinkSync(`uploads/Category/MainCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
       return handleResponse(resp, 405, "This Category already exists in your list");
     }
 
+    if (req.file){
+      const newCategory = new MainCategory({
+        name,
+        image: `./uploads/Category/MainCategory/${userId}/${req.file.filename}`, 
+        userId
+      });
+  
+      await newCategory.save();
+      return handleResponse(resp, 201, "Category created successfully", newCategory);
+    }
     const newCategory = new MainCategory({
       name,
-      image: `./uploads/Category/MainCategory/${userId}/${req.file.filename}`, 
       userId
     });
 
@@ -379,25 +384,32 @@ Routes.post("/createSubCategory/:mainCategory",adminChecker,uploadSubCategory.si
       return handleResponse(resp, 400, "Main Category id is invalid");
     }
 
-    if (!req.file) {
-      return handleResponse(resp, 404, "Category Image is required");
-    }
     const existingMainCategory = await MainCategory.findOne({ _id:mainCategory,userId }).select("-image");
     if (!existingMainCategory) {
-      fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+      if(req.file) fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
       return handleResponse(resp, 405, "The Main Category of this is not exists in your list");
     }
 
     // Check if category already exists
     const existingSubCategory = await SubCategory.findOne({ name,mainCategory:existingMainCategory._id,userId });
     if (existingSubCategory) {
-      fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+      if(req.file) fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
       return handleResponse(resp, 405, "This Category already exists in your list");
     }
 
+    if (req.file){
+      const newCategory = new SubCategory({
+        name,
+        image: `./uploads/Category/SubCategory/${userId}/${req.file.filename}`, 
+        mainCategory:existingMainCategory._id,
+        userId
+      });
+  
+      await newCategory.save();
+      return handleResponse(resp, 201, `Category of ${existingMainCategory?.name} created successfully`, newCategory);
+    }
     const newCategory = new SubCategory({
       name,
-      image: `./uploads/Category/SubCategory/${userId}/${req.file.filename}`, 
       mainCategory:existingMainCategory._id,
       userId
     });
@@ -458,25 +470,34 @@ Routes.post("/createSubSubCategory/:subCategory",adminChecker,uploadSubSubCatego
       if (req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if parentCategory is missing
       return handleResponse(resp, 400, "Sub Category Id is invalid");
     }
-    if (!req.file) {
-      return handleResponse(resp, 404, "Category Image is required");
-    }
+    
     const existingSubCategory = await SubCategory.findOne({ _id:subCategory,userId }).select("-image");
     if (!existingSubCategory) {
-      fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+      if(req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
       return handleResponse(resp, 405, "The Sub Category of this is not exists in your list");
     }
 
     // Check if category already exists
     const existingSubSubCategory = await SubSubCategory.findOne({ name,subCategory:existingSubCategory._id,mainCategory:existingSubCategory.mainCategory,userId });
     if (existingSubSubCategory) {
-      fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+      if(req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
       return handleResponse(resp, 405, "This Category already exists in your list");
     }
 
+    if (req.file){
+      const newCategory = new SubSubCategory({
+        name,
+        image: `./uploads/Category/SubSubCategory/${userId}/${req.file.filename}`, 
+        subCategory:existingSubCategory._id,
+        mainCategory:existingSubCategory.mainCategory,
+        userId
+      });
+  
+      await newCategory.save();
+      return handleResponse(resp, 201, `Category of ${existingSubCategory?.name} created successfully`, newCategory);
+    }
     const newCategory = new SubSubCategory({
       name,
-      image: `./uploads/Category/SubSubCategory/${userId}/${req.file.filename}`, 
       subCategory:existingSubCategory._id,
       mainCategory:existingSubCategory.mainCategory,
       userId
@@ -1062,6 +1083,7 @@ Routes.put("/updateProduct/:subSubCategory/:productId",adminChecker,async(req,re
       if(description) existingProduct.description=description
       existingProduct.options=options
       if(existingSubSubCategory.hasSize) existingProduct.size=size
+      existingProduct.markModified("options")
       await existingProduct.save()
       return handleResponse(resp,202,"Product updated successfully")
     }
@@ -1070,6 +1092,8 @@ Routes.put("/updateProduct/:subSubCategory/:productId",adminChecker,async(req,re
     existingProduct.price=price
     if(description) existingProduct.description=description
     if(existingSubSubCategory.hasSize) existingProduct.size=size
+    existingProduct.options=null
+    existingProduct.markModified("options")
     await existingProduct.save()
     return handleResponse(resp,202,"Product updated successfully")
   } catch (error) {
