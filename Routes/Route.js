@@ -455,7 +455,7 @@ const uploadSubSubCategory = multer({ storage: storage2 });
 Routes.post("/createSubSubCategory/:subCategory",adminChecker,uploadSubSubCategory.single("image"), async (req, resp) => {
   const userId=req.user._id
   try {
-    const { name } = req.body;
+    const { name,isSize } = req.body;
     const { subCategory } = req.params
 
     if (!name) {
@@ -470,7 +470,11 @@ Routes.post("/createSubSubCategory/:subCategory",adminChecker,uploadSubSubCatego
       if (req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if parentCategory is missing
       return handleResponse(resp, 400, "Sub Category Id is invalid");
     }
-    
+    if (isSize && typeof JSON.parse(isSize) !== 'boolean'){
+      if (req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if parentCategory is missing
+      return handleResponse(resp, 400, "Invalid Size Criteria");
+    }
+
     const existingSubCategory = await SubCategory.findOne({ _id:subCategory,userId }).select("-image");
     if (!existingSubCategory) {
       if(req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
@@ -490,7 +494,8 @@ Routes.post("/createSubSubCategory/:subCategory",adminChecker,uploadSubSubCatego
         image: `./uploads/Category/SubSubCategory/${userId}/${req.file.filename}`, 
         subCategory:existingSubCategory._id,
         mainCategory:existingSubCategory.mainCategory,
-        userId
+        userId,
+        hasSize:isSize
       });
   
       await newCategory.save();
@@ -500,7 +505,8 @@ Routes.post("/createSubSubCategory/:subCategory",adminChecker,uploadSubSubCatego
       name,
       subCategory:existingSubCategory._id,
       mainCategory:existingSubCategory.mainCategory,
-      userId
+      userId,
+      hasSize:isSize
     });
 
     await newCategory.save();
@@ -845,10 +851,11 @@ Routes.post("/addSizes/:subSubCategory",adminChecker,async(req,resp)=>{
     
     const existingSubSubCategory = await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id}).select("-image")
     if(!existingSubSubCategory) return handleResponse(resp,404,"This category is not exists in your list.")
-    if(!existingSubSubCategory.hasSize){
-      existingSubSubCategory.hasSize=true
-      await existingSubSubCategory.save()
-    }
+    if(!existingSubSubCategory.hasSize) return handleResponse(resp,400,"This category does not have size permission.")
+    
+    const existingSize = await Size.findOne({length:parseFloat(length),breadth:parseFloat(breadth),userId:req.user._id,subSubCategory:existingSubSubCategory._id})
+    if(existingSize) return handleResponse(resp,400,"This size is already exists in this category!")
+      
     const newSize=new Size({userId:req.user._id,subSubCategory:existingSubSubCategory._id,
       length:parseFloat(length),breadth:parseFloat(breadth)
     })
@@ -882,15 +889,7 @@ Routes.delete("/deleteSize/:sizeId",adminChecker,async(req,resp)=>{
     const existingSize = await Size.findOne({_id:sizeId,userId:req.user._id})
     if(!existingSize) return handleResponse(resp,400,"This size is not found in your list")
     
-    const categoryId=existingSize.subSubCategory
-    const totalSizes= await Size.countDocuments({subSubCategory:categoryId,userId:req.user._id})
-    if(totalSizes===1){
-      const existingSubSubCategory= await SubSubCategory.findOne({_id:categoryId,userId:req.user._id}).select("-image")
-      if(!existingSubSubCategory) return handleResponse(resp,400,"The Category of this Size does not exists.")
-      existingSubSubCategory.hasSize=false
-      await existingSubSubCategory.save()
-    }
-    await Size.deleteOne({_id:existingSize._id,userId:req.user._id,subSubCategory:categoryId})
+    await Size.deleteOne({_id:existingSize._id,userId:req.user._id,subSubCategory:existingSize.subSubCategory})
     return handleResponse(resp,202,"Size deleted successfully!")
   } catch (error) {
     return handleError(resp,error)
