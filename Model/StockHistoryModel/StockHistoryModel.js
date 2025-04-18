@@ -76,6 +76,10 @@ const PurchaseSchema = new mongoose.Schema({
     vendorName:{
         type:String,
         required:true,
+    },
+    returned:{
+        type:Boolean,
+        default:false
     }
 })
 const SaleSchema = new mongoose.Schema({
