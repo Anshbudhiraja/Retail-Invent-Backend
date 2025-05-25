@@ -9,11 +9,13 @@ const BaseSchema= new mongoose.Schema({
     productId:{
         type:mongoose.Schema.Types.ObjectId,
         ref:process.env.PRODUCT_COLLECTION,
-        required:true,
+        required: function () {
+        return this.type !== 'credit_note' && this.type !== 'debit_note';
+        }
     },
-    subSubCategory:{
+    vendorId:{
         type:mongoose.Schema.Types.ObjectId,
-        ref:process.env.CATEGORY_COLLECTION,
+        ref:process.env.VENDOR_COLLECTION,
         required:true,
     },
     date:{
@@ -24,95 +26,50 @@ const BaseSchema= new mongoose.Schema({
         type:String,
         default:null
     },
-    type:{
-        type:String,
-        required:true,
-        enum:["Rate","Purchase","Return","Sale"]
-    }
-},{timestamps:true,discriminatorKey:"type",collection:process.env.STOCK_HISTORY_COLLECTION})
+    type:{ 
+        type: String, 
+        enum: ['stock_in', 'stock_return', 'debit_note', 'credit_note'], 
+        required: true,
+    },
+    quantity: { 
+        type: Number,
+        required: function () {
+            return this.type === 'stock_in' || this.type === 'stock_return';
+        }
+    },
+    costPerUnit: { type: Number },
+    totalAmount: { type: Number, required: true },
+    otherCharges: { type: Number, default: 0 },
+    gst: {type:Number,required:true,enum:[0,5,12,18,28],default:0},
+    gstCharges: { type: Number,required:true,default:0},
+    vendorName: { type: String, required:true }
+},{timestamps:true,discriminatorKey:"type",collection:process.env.STOCK_HISTORY_COLLECTION, toJSON: { virtuals: true },toObject: { virtuals: true }})
 const StockHistory=mongoose.model(process.env.STOCK_HISTORY_COLLECTION,BaseSchema)
 
-const RateSchema = new mongoose.Schema({
-    quantity:{
-        type:Number,
-        default:0
-    },
-    cost:{
-        type:Number,
-        required:true
-    },
-    otherCharges:{
-        type:Number,
-        default:0
-    },
-    vendorId:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:process.env.VENDOR_COLLECTION,
-        required:true,
-    },
-    vendorName:{
-        type:String,
-        required:true,
-    }
+BaseSchema.virtual('returns', {
+  ref: process.env.STOCK_HISTORY_COLLECTION,
+  localField: '_id',
+  foreignField: 'parentStockHistoryId'
+});
+
+const StockInSchema = new mongoose.Schema({ 
+    
 })
-const PurchaseSchema = new mongoose.Schema({
-    quantity:{
-        type:Number,
-        required:true,
-    },
-    cost:{
-        type:Number,
-        required:true
-    },
-    otherCharges:{
-        type:Number,
-        default:0
-    },
-    vendorId:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:process.env.VENDOR_COLLECTION,
-        required:true,
-    }, 
-    vendorName:{
-        type:String,
-        required:true,
-    },
-    returned:{
-        type:Boolean,
-        default:false
-    }
+const StockReturnSchema = new mongoose.Schema({
+   parentStockHistoryId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: process.env.STOCK_HISTORY_COLLECTION,
+    required:true,
+  },
 })
-const SaleSchema = new mongoose.Schema({
-    quantity:{
-        type:Number,
-        required:true,
-    }
+const DebitSchema = new mongoose.Schema({
+    
 })
-const ReturnSchema = new mongoose.Schema({
-    quantity:{
-        type:Number,
-        required:true,
-    },
-    cost:{
-        type:Number,
-        required:true
-    },
-    otherCharges:{
-        type:Number,
-        default:0
-    },
-    vendorId:{
-        type:mongoose.Schema.Types.ObjectId,
-        ref:process.env.VENDOR_COLLECTION,
-        required:true,
-    },
-    vendorName:{
-        type:String,
-        required:true,
-    }
+const CreditSchema = new mongoose.Schema({
+    
 })
-const Rate = StockHistory.discriminator("Rate",RateSchema)
-const Purchase = StockHistory.discriminator("Purchase",PurchaseSchema)
-const Sale = StockHistory.discriminator("Sale",SaleSchema)
-const Return = StockHistory.discriminator("Return",ReturnSchema)
-module.exports={StockHistory,Rate,Purchase,Sale,Return}
+const StockIn = StockHistory.discriminator("stock_in",StockInSchema)
+const StockReturn = StockHistory.discriminator("stock_return",StockReturnSchema)
+const Debit = StockHistory.discriminator("debit_note",DebitSchema)
+const Credit = StockHistory.discriminator("credit_note",CreditSchema)
+module.exports={StockHistory,StockIn,StockReturn,Debit,Credit}

@@ -1,6 +1,7 @@
 const express = require("express");
 const fs=require("fs")
 const multer=require("multer")
+const path = require('path');
 require("dotenv").config()
 const {superAdminChecker, adminChecker, adminPrivacyChecker} = require("../Middlewares/Checkuserdetails");
 const { handleResponse }=require("../Responses/Responses");
@@ -16,6 +17,8 @@ const ProductController = require("../Controller/AdminController/ProductControll
 const StockHistoryController = require("../Controller/AdminController/StockHistoryController/StockHistoryController");
 const AdminController = require("../Controller/AdminController/AdminController");
 const CategoryController = require("../Controller/AdminController/CategoryController/CategoryController");
+const RateController = require("../Controller/AdminController/RateController/RateController");
+const PaymentController = require("../Controller/AdminController/PaymentController/PaymentController");
 const Routes = express.Router();
 
 Routes.get("/", async (req, resp) =>handleResponse(resp,202,"Server Health is Okay"))
@@ -41,7 +44,7 @@ Routes.put("/disableUser/:userId",superAdminChecker,SuperAdminController.disable
 Routes.get("/getUser",adminChecker,AdminController.getUser)
 
 //settings (admin) ------> login & privacy passwords
-Routes.put("/createPrivacyPassword",adminChecker,AdminController.checkPrivacyPassword)
+Routes.put("/createPrivacyPassword",adminChecker,AdminController.createPrivacyPassword)
 Routes.get("/fetchPrivacyPassword",adminChecker,AdminController.fetchPrivacyPassword)
 Routes.post("/checkPrivacyPassword",adminChecker,AdminController.checkPrivacyPassword)
 Routes.put("/changeUserLoginPassword",adminChecker,AdminController.changeUserLoginPassword)
@@ -52,9 +55,10 @@ Routes.get("/categories",adminChecker,CategoryController.categories)
 // 1st level of category (admin)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-      fs.mkdir(`./uploads/Category/MainCategory/${req.user._id}/`,{recursive:true},(err)=>{
+    const uploadPath = path.join(__dirname,"..","uploads","Category","MainCategory",String(req.user._id))
+      fs.mkdir(uploadPath,{recursive:true},(err)=>{
           if(err) return cb(err,null)
-          else cb(null, `uploads/Category/MainCategory/${req.user._id}/`);
+          else cb(null, uploadPath);
       })
   },
   filename: (req, file, cb) => {
@@ -69,9 +73,10 @@ Routes.get("/getAllMainCategory",adminChecker,MainCategoryController.getAllMainC
 const storage1 = multer.diskStorage({
   destination: (req, file, cb) => {
       const userId=req.user._id
-      fs.mkdir(`./uploads/Category/SubCategory/${userId}/`,{recursive:true},(err)=>{
+      const uploadPath = path.join(__dirname, '..', 'uploads', 'Category', 'SubCategory', String(userId));
+      fs.mkdir(uploadPath,{recursive:true},(err)=>{
           if(err) return cb(err,null)
-          else cb(null, `uploads/Category/SubCategory/${userId}/`);
+          else cb(null,uploadPath);
       })
   },
   filename: (req, file, cb) => {
@@ -86,9 +91,10 @@ Routes.get("/getAllSubCategory/:mainCategory",adminChecker,SubCategoryController
 const storage2 = multer.diskStorage({
   destination: (req, file, cb) => {
       const userId=req.user._id
-      fs.mkdir(`./uploads/Category/SubSubCategory/${userId}/`,{recursive:true},(err)=>{
+      const uploadPath = path.join(__dirname, '..', 'uploads', 'Category', 'SubSubCategory', String(userId));
+      fs.mkdir(uploadPath,{recursive:true},(err)=>{
           if(err) return cb(err,null)
-          else cb(null, `uploads/Category/SubSubCategory/${userId}/`);
+          else cb(null,uploadPath);
       })
   },
   filename: (req, file, cb) => {
@@ -99,7 +105,7 @@ const uploadSubSubCategory = multer({ storage: storage2 });
 Routes.post("/createSubSubCategory/:subCategory",adminChecker,uploadSubSubCategory.single("image"),SubSubCategoryController.createSubSubCategory);
 Routes.get("/getAllSubSubCategory/:subCategory",adminChecker,SubSubCategoryController.getAllSubSubCategory)
 Routes.get("/getSubSubCategory/:subsubCategory",adminChecker,SubSubCategoryController.getSubSubCategory)
-Routes.delete("/deleteSubSubCategory/:subSubCategory",adminChecker,SubSubCategoryController.deleteSubSubCategory)
+Routes.delete("/deleteSubSubCategory/:subSubCategory",adminChecker,SubSubCategoryController.deleteSubSubCategory)//error
 
 //options (admin)
 Routes.post("/createOptions/:subSubCategory",adminChecker,OptionController.createOptions);
@@ -121,10 +127,10 @@ Routes.delete("/deleteAllProducts/:subSubCategory",adminChecker,ProductControlle
 Routes.put("/updateProduct/:subSubCategory/:productId",adminChecker,ProductController.updateProduct)
 
 // vendors (admin)
-Routes.post("/createVendor/:subSubCategory",adminChecker,VendorController.createVendor)
-Routes.get("/getAllVendors/:subSubCategory",adminChecker,VendorController.getAllVendors)
+Routes.post("/createVendor",adminChecker,VendorController.createVendor)
+Routes.get("/getAllVendors",adminChecker,VendorController.getAllVendors)
 Routes.delete("/deleteVendor/:vendorId",adminChecker,VendorController.deleteVendor)
-Routes.delete("/deleteAllVendors/:subSubCategory",adminChecker,VendorController.deleteAllVendors)
+Routes.delete("/deleteAllVendors",adminChecker,VendorController.deleteAllVendors)
 Routes.put("/updateVendor/:vendorId",adminChecker,VendorController.updateVendor)
 
 //stock-history (admin)
@@ -132,21 +138,28 @@ Routes.put("/updateVendor/:vendorId",adminChecker,VendorController.updateVendor)
 Routes.post("/addStock/:productId",adminChecker,StockHistoryController.addStock)
 Routes.get("/getAllPurchases/:productId",adminPrivacyChecker,StockHistoryController.getAllPurchases)
 Routes.get("/getTotalPurchasePages/:productId",adminPrivacyChecker,StockHistoryController.getTotalPurchasePages)
-Routes.put("/updatePurchase/:purchaseId",adminPrivacyChecker,StockHistoryController.updatePurchase)
-//2) rate
-Routes.post("/addRate/:productId",adminChecker,StockHistoryController.addRate)
-Routes.get("/getAllRates/:productId",adminPrivacyChecker,StockHistoryController.getAllRates)
-Routes.get("/getTotalRatePages/:productId",adminPrivacyChecker,StockHistoryController.getTotalRatePages)
-Routes.put("/updateRate/:rateId",adminPrivacyChecker,StockHistoryController.updateRate)
-Routes.delete("/deleteRate/:rateId",adminPrivacyChecker,StockHistoryController.deleteRate)
-//3) return
-Routes.post("/addReturn/:purchaseId",adminPrivacyChecker,StockHistoryController.addReturn)
+//2) return
+Routes.post("/addReturn/:stockInId",adminPrivacyChecker,StockHistoryController.addReturn)
 Routes.get("/getAllReturns/:productId",adminPrivacyChecker,StockHistoryController.getAllReturns)
 Routes.get("/getTotalReturnPages/:productId",adminPrivacyChecker,StockHistoryController.getTotalReturnPages)
-//4) all history
+//3) all history
 Routes.get("/getAllHistory/:productId",adminPrivacyChecker,StockHistoryController.getAllHistory)
 Routes.get("/getTotalHistoryPages/:productId",adminPrivacyChecker,StockHistoryController.getTotalHistoryPages)
-//5) sale
-Routes.get("/getAllSales/:productId",adminPrivacyChecker,StockHistoryController.getAllSales)
-Routes.get("/getTotalSalePages/:productId",adminPrivacyChecker,StockHistoryController.getTotalSalePages)
+//4) note ( Credit, Debit)
+Routes.post("/createCreditNote",adminChecker,StockHistoryController.createCreditNote)
+Routes.post("/createDebitNote",adminChecker,StockHistoryController.createDebitNote)
+
+// Rate-history (admin)
+Routes.post("/addRate/:productId",adminChecker,RateController.addRate)
+Routes.get("/getAllRates/:productId",adminPrivacyChecker,RateController.getAllRates)
+Routes.get("/getTotalRatePages/:productId",adminPrivacyChecker,RateController.getTotalRatePages)
+Routes.put("/updateRate/:rateId",adminPrivacyChecker,RateController.updateRate)
+Routes.delete("/deleteRate/:rateId",adminPrivacyChecker,RateController.deleteRate)
+
+// payment-history (admin)
+Routes.post("/createPayment",adminChecker,PaymentController.createPayment)
+// vendor-ledger (admin)
+Routes.get("/getCurrentMonthLedger/:vendorId",adminChecker,PaymentController.getCurrentMonthLedger)
+Routes.get("/getFinancialYearLedger/:vendorId",adminChecker,PaymentController.getFinancialYearLedger)
+
 module.exports = Routes;  

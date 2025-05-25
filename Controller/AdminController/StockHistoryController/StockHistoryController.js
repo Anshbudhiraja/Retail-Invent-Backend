@@ -1,10 +1,9 @@
 const mongoose=require("mongoose")
 require("dotenv").config()
-const { SubSubCategory } = require("../../../Model/CategoryModel/CategoryModel");
 const {handleResponse,handleError}=require("../../../Responses/Responses");
 const Vendor = require("../../../Model/VendorModel/VendorModel");
 const Product = require("../../../Model/ProductModel/ProductModel");
-const { Purchase, Rate, Return, StockHistory, Sale } = require("../../../Model/StockHistoryModel/StockHistoryModel");
+const { StockIn, StockReturn, Credit, StockHistory, Debit } = require("../../../Model/StockHistoryModel/StockHistoryModel");
 
 // checking past/today date
 const isPastOrToday = (inputDate) => {
@@ -21,80 +20,46 @@ const StockHistoryController={
           const {productId} = req.params
           if(!productId || !mongoose.isValidObjectId(productId)) return handleResponse(resp,404,"Invalid Product Id")
       
-          const {stock,vendor,cost,date,othercharges,message} = req.body
-          if(!vendor || vendor==="none") return handleResponse(resp,400,"Select the vendor")
-          if(!cost) return handleResponse(resp,400,"Cost is required")
-          if(!stock) return handleResponse(resp,404,"Stock is required")
-          if(cost<0) return handleResponse(resp,400,"Cost per item is invalid.")
-          if(stock<=0) return handleResponse(resp,400,"Stock Value is invalid.")
-          if(othercharges<0) return handleResponse(resp,400,"GST and other charges is invalid.")
-          if(!mongoose.isValidObjectId(vendor)) return handleResponse(resp,400,"Invalid Vendor Id.")
+          const {quantity,vendorId,costPerUnit,date,otherCharges,gst,message} = req.body
+          if(!vendorId || vendorId==="none") return handleResponse(resp,400,"Select the vendor")
+          if(!costPerUnit) return handleResponse(resp,400,"Cost is required")
+          if(!quantity) return handleResponse(resp,404,"Quantity is required")
+          if(costPerUnit<0) return handleResponse(resp,400,"Cost per unit is invalid.")
+          if(quantity<=0) return handleResponse(resp,400,"Quantity is invalid.")
+          if(otherCharges<0) return handleResponse(resp,400,"Other Charges is invalid.")
+          if(![0,5,12,18,28].includes(gst)) return handleResponse(resp,400,"GST Charges is required or invalid.")
+          
+          if(!mongoose.isValidObjectId(vendorId)) return handleResponse(resp,400,"Invalid Vendor Id.")
       
           if(date && !isPastOrToday(date)) return handleResponse(resp,400,"Date must not be in the future.")
       
           const existingProduct = await Product.findOne({_id:productId,userId:req.user._id})
           if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list.")
       
-          const existingVendor = await Vendor.findOne({_id:vendor,userId:req.user._id})
+          const existingVendor = await Vendor.findOne({_id:vendorId,userId:req.user._id})
           if(!existingVendor) return handleResponse(resp,400,"This Vendor is not exists in your list.")
       
-          const existingSubSubCategory = await SubSubCategory.findOne({_id:existingProduct.subSubCategory,userId:req.user._id}).select("-image")
-          existingProduct.stock+=parseInt(stock)
+          existingProduct.stock+=parseInt(quantity)
           await existingProduct.save()
+          const amount=costPerUnit*quantity
+          const gstCharges=(amount*gst)/100
+          const totalAmount=amount+gstCharges
+          existingVendor.balance+=totalAmount
+          await existingVendor.save()
           if(date){
-            const newPurchase = new Purchase({
-              productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,subSubCategory:existingSubSubCategory._id,
-              cost,otherCharges:othercharges,date:new Date(date),quantity:stock,userId:req.user._id
+            const newPurchase = new StockIn({
+              productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,
+              costPerUnit,otherCharges,totalAmount,gst,gstCharges,date:new Date(date),quantity,userId:req.user._id
             })
             await newPurchase.save()
           } else{
-            const newPurchase = new Purchase({
-              productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,subSubCategory:existingSubSubCategory._id,
-              cost,otherCharges:othercharges,quantity:stock,userId:req.user._id
+            const newPurchase = new StockIn({
+              productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,
+              costPerUnit,otherCharges,totalAmount,gst,gstCharges,quantity,userId:req.user._id
             })
             await newPurchase.save()
           }
-          return handleResponse(resp,202,"Stock Added Successfully")
-        } catch (error) {
-          return handleError(resp,error)
-        }
-      },
-    addRate:async(req,resp)=>{
-        try {
-          const {productId} = req.params
-          if(!productId || !mongoose.isValidObjectId(productId)) return handleResponse(resp,404,"Invalid Product Id")
-      
-          const {stock,vendor,cost,date,othercharges,message} = req.body
-          if(!vendor || vendor==="none") return handleResponse(resp,400,"Select the Vendor")
-          if(!cost) return handleResponse(resp,400,"Cost is required")
-      
-          if(cost<0) return handleResponse(resp,400,"Cost per item is invalid.")
-          if(stock<0) return handleResponse(resp,400,"Stock Value is invalid.")
-          if(othercharges<0) return handleResponse(resp,400,"GST and other charges is invalid.")
-          if(!mongoose.isValidObjectId(vendor)) return handleResponse(resp,400,"Invalid Vendor Id.")
-          
-          if(date && !isPastOrToday(date)) return handleResponse(resp,400,"Date must not be in the future.")
-          
-          const existingProduct = await Product.findOne({_id:productId,userId:req.user._id})
-          if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list.")
-      
-          const existingVendor = await Vendor.findOne({_id:vendor,userId:req.user._id})
-          if(!existingVendor) return handleResponse(resp,400,"This Vendor is not exists in your list.")
-      
-          if(date){
-            const newRate = new Rate({
-              productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,subSubCategory:existingProduct.subSubCategory,
-              cost,otherCharges:othercharges,date:new Date(date),quantity:stock,userId:req.user._id
-            })
-            await newRate.save()
-          } else {
-            const newRate = new Rate({
-              productId:existingProduct._id,vendorId:existingVendor._id,vendorName:existingVendor.name,message,subSubCategory:existingProduct.subSubCategory,
-              cost,otherCharges:othercharges,quantity:stock,userId:req.user._id
-            })
-            await newRate.save()
-          }
-          return handleResponse(resp,201,"New Rate Added Successfully")
+          return handleResponse(resp,201,"Stock Added Successfully")
         } catch (error) {
           return handleError(resp,error)
         }
@@ -110,9 +75,20 @@ const StockHistoryController={
           const page = parseInt(req.query?.page) || 1;
           const limit = 10;
           
-          const result = await Purchase.find({productId:existingProduct._id,userId:req.user._id}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate("vendorId","name")
+          const result = await StockIn.find({productId:existingProduct._id,userId:req.user._id}).sort({ date: -1 }).skip((page - 1) * limit).limit(limit).populate("vendorId","name").lean();
           if(!result || result.length===0) return handleResponse(resp,400,"Purchase History of this product is empty")
-          return handleResponse(resp,202,"Purchase history loaded successfully",result)
+          
+          const stockInIds = result.map(stock => stock._id);
+          const stockReturns = await StockReturn.find({parentStockHistoryId: { $in: stockInIds },userId: req.user._id}).populate("vendorId","name").lean();
+          
+          const groupedReturns = {};
+          stockReturns.forEach(ret => {
+          if (!groupedReturns[ret.parentStockHistoryId]) {groupedReturns[ret.parentStockHistoryId] = [];}
+          groupedReturns[ret.parentStockHistoryId].push(ret);
+          });
+
+          const enrichedStockIns = result.map(stock => ({...stock,stockReturns: groupedReturns[stock._id] || []}));
+          return handleResponse(resp,202,"Purchase history loaded successfully",enrichedStockIns)
         } catch (error) {
           return handleError(resp,error)
         }
@@ -126,200 +102,71 @@ const StockHistoryController={
           if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list")
           
           const limit = 10;
-          const totalPurchases = await Purchase.countDocuments({ productId: existingProduct._id, userId: req.user._id });
+          const totalPurchases = await StockIn.countDocuments({ productId: existingProduct._id, userId: req.user._id });
           const totalPages = Math.ceil(totalPurchases / limit);
           return handleResponse(resp,202,"Purchase history calculated",{totalPurchases,totalPages})
         } catch (error) {
           return handleError(resp,error)
         }
       },
-    getAllRates:async(req,resp)=>{
-        try {
-          const {productId} = req.params
-          if(!productId || !mongoose.isValidObjectId(productId)) return handleResponse(resp,400,"Invalid Product Id")
-          
-          const existingProduct = await Product.findOne({_id:productId,userId:req.user._id})
-          if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list")
-          
-          const page = parseInt(req.query?.page) || 1; 
-          const limit = 10; 
-      
-          const result = await Rate.find({productId:existingProduct._id,userId:req.user._id}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate("vendorId","name")
-          if(!result || result.length===0) return handleResponse(resp,400,"Rate History of this product is empty")
-          return handleResponse(resp,202,"Rate history loaded successfully",result)
-        } catch (error) {
-          return handleError(resp,error)
-        }
-      },
-    getTotalRatePages:async(req,resp)=>{
-        try {
-          const {productId} = req.params
-          if(!productId || !mongoose.isValidObjectId(productId)) return handleResponse(resp,400,"Invalid Product Id")
-          
-          const existingProduct = await Product.findOne({_id:productId,userId:req.user._id})
-          if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list")
-          
-          const limit = 10; 
-          const totalRates = await Rate.countDocuments({ productId: existingProduct._id, userId: req.user._id });
-          const totalPages = Math.ceil(totalRates / limit);
-          return handleResponse(resp,202,"Rate history calculated",{totalPages,totalRates})
-        } catch (error) {
-          return handleError(resp,error)
-        }
-      },
-    updatePurchase:async (req, resp) => {
-      try {
-        const { purchaseId } = req.params;
-        if (!purchaseId || !mongoose.isValidObjectId(purchaseId))
-          return handleResponse(resp, 400, "Invalid Purchase Id");
-    
-        const { stock,vendor,cost, date, othercharges, message } = req.body;
-
-        if(!vendor || vendor==="none") return handleResponse(resp,400,"Vendor is required")
-        if (!cost && cost !== 0) return handleResponse(resp, 400, "Cost is required");
-        if (!stock && stock !== 0) return handleResponse(resp, 404, "Stock is required");
-        if (cost < 0) return handleResponse(resp, 400, "Cost per item is invalid.");
-        if (stock <= 0) return handleResponse(resp, 400, "Stock value is invalid.");
-        if (othercharges < 0) return handleResponse(resp, 400, "GST and other charges is invalid.");
-        if(!mongoose.isValidObjectId(vendor)) return handleResponse(resp,400,"Vendor is invalid")
-        if (date && !isPastOrToday(date)) return handleResponse(resp, 400, "Date must not be in the future.");
-    
-        const existingPurchase = await Purchase.findOne({ _id: purchaseId, userId: req.user._id }).select("-vendor");
-        if (!existingPurchase) return handleResponse(resp, 400, "This Purchase does not exist in your list");
-    
-        const existingProduct = await Product.findOne({ _id: existingPurchase.productId, userId: req.user._id });
-        if (!existingProduct) return handleResponse(resp, 400, "Product of this Purchase is not available");
-    
-        const existingVendor = await Vendor.findOne({_id:vendor,userId:req.user._id})
-        if(!existingVendor) return handleResponse(resp,404,"This vendor is not exists in your list")
-
-        const newStock = parseInt(stock);
-        const oldStock = existingPurchase.quantity;
-        const stockDifference = newStock - oldStock;
-    
-        const applyPurchaseUpdates = async () => {
-          existingPurchase.cost = cost;
-          existingPurchase.quantity = newStock;
-          existingPurchase.date = date;
-          existingPurchase.otherCharges = othercharges;
-          existingPurchase.message = message;
-          existingPurchase.vendorId=existingVendor._id
-          existingPurchase.vendorName=existingVendor.name
-          await existingPurchase.save();
-        };
-    
-        if (stockDifference === 0) {
-          await applyPurchaseUpdates();
-          return handleResponse(resp, 202, "Purchase Updated!");
-        }
-    
-        if (stockDifference < 0) {
-          const reduction = Math.abs(stockDifference);
-          if (existingProduct.stock >= reduction) {
-            existingProduct.stock -= reduction;
-            await existingProduct.save();
-            await applyPurchaseUpdates();
-            return handleResponse(resp, 202, "Purchase Updated!");
-          } else {
-            return handleResponse(resp, 400, "Not enough stock in your Product");
-          }
-        }
-    
-        // If stockDifference > 0
-        existingProduct.stock += stockDifference;
-        await existingProduct.save();
-        await applyPurchaseUpdates();
-        return handleResponse(resp, 202, "Purchase Updated!");
-    
-      } catch (error) {
-        return handleError(resp, error);
-      }
-    },
-    updateRate:async (req, resp) => {
-      try {
-        const { rateId } = req.params;
-        if (!rateId || !mongoose.isValidObjectId(rateId))
-          return handleResponse(resp, 400, "Invalid Rate Id");
-    
-        const { stock, cost,vendor,date, othercharges, message } = req.body;
-    
-        if(!vendor || vendor==="none") return handleResponse(resp,400,"Vendor is required")
-        if (!cost && cost !== 0) return handleResponse(resp, 400, "Cost is required");
-        if (cost < 0) return handleResponse(resp, 400, "Cost per item is invalid.");
-        if (stock < 0) return handleResponse(resp, 400, "Stock value is invalid.");
-        if (othercharges < 0) return handleResponse(resp, 400, "GST and other charges is invalid.");
-        if(!mongoose.isValidObjectId(vendor)) return handleResponse(resp,400,"Vendor is invalid")
-        if (date && !isPastOrToday(date)) return handleResponse(resp, 400, "Date must not be in the future.");
-    
-        const existingVendor = await Vendor.findOne({_id:vendor,userId:req.user._id})
-        if(!existingVendor) return handleResponse(resp,404,"This vendor is not exists in your list")
-
-        const existingRate = await Rate.findOne({ _id: rateId, userId: req.user._id }).select("-vendor");
-        if (!existingRate) return handleResponse(resp, 400, "This Rate does not exists in your list");
-    
-        existingRate.cost = cost;
-        existingRate.quantity = stock;
-        existingRate.date = date;
-        existingRate.otherCharges = othercharges;
-        existingRate.message = message;
-        existingRate.vendorId=existingVendor._id
-        existingRate.vendorName=existingVendor.name
-        await existingRate.save();
-        return handleResponse(resp,202,"Rate Updated!")
-      } catch (error) {
-        return handleError(resp, error);
-      }
-    },
-    deleteRate:async (req, resp) => {
-      try {
-        const { rateId } = req.params;
-        if (!rateId || !mongoose.isValidObjectId(rateId)) return handleResponse(resp, 400, "Invalid Rate Id");
-    
-        const existingRate = await Rate.findOne({ _id: rateId, userId: req.user._id }).select("-vendor");
-        if (!existingRate) return handleResponse(resp, 400, "This Rate does not exists in your list");
-
-        await Rate.deleteOne({ _id: rateId, userId: req.user._id})
-        return handleResponse(resp,202,"Rate deleted!")
-      } catch (error) {
-        return handleError(resp, error);
-      }
-    },
     addReturn:async(req,resp)=>{
       try {
-        const {purchaseId} = req.params
-        if(!purchaseId || !mongoose.isValidObjectId(purchaseId)) return handleResponse(resp,404,"Invalid Purchase Id")
+        const {stockInId} = req.params
+        if(!stockInId || !mongoose.isValidObjectId(stockInId)) return handleResponse(resp,400,"Invalid Purchase Id")
     
-        const {stock,message} = req.body
-        if(!stock) return handleResponse(resp,404,"Stock is required")
-        if(stock<=0) return handleResponse(resp,400,"Stock Value is invalid.")
-    
-        const existingPurchase = await Purchase.findOne({_id:purchaseId,userId:req.user._id})
-        if(!existingPurchase) return handleResponse(resp,404,"This Purchase is not exists in your list.")
-        if(existingPurchase.returned) return handleResponse(resp,400,"This Purchase is already returned.")
+        const {quantity,message,date,otherCharges} = req.body
+        if(!quantity) return handleResponse(resp,400,"Quantity is required")
+        if(quantity<=0) return handleResponse(resp,400,"Quantity is invalid.")
+        if(!message) return handleResponse(resp,400,"Message is required")
+        if(otherCharges<0) return handleResponse(resp,400,"Other Charges is invalid.")
+
+        if(date && !isPastOrToday(date)) return handleResponse(resp,400,"Date must not be in the future.")
+
+        const existingPurchase = await StockIn.findOne({_id:stockInId,userId:req.user._id})
+        if(!existingPurchase) return handleResponse(resp,400,"This Purchase is not exists in your list.")
+
+        const existingVendor = await Vendor.findOne({_id:existingPurchase.vendorId,userId:req.user._id})
+        if(!existingVendor) return handleResponse(resp,400,"This vendor is not exists in your list.")
 
         const existingProduct = await Product.findOne({_id:existingPurchase.productId,userId:req.user._id})
-        if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list.")
+        if(!existingProduct) return handleResponse(resp,400,"This product is not exists in your list.")
+
+        const previousReturns = await StockReturn.find({parentStockHistoryId: stockInId});
+        const alreadyReturnedQty = previousReturns.reduce((sum, r) => sum + r.quantity, 0);
+        if (parseInt(alreadyReturnedQty) + parseInt(quantity) > existingPurchase.quantity) return handleResponse(resp,404,"Return quantity exceeds original purchase quantity.",previousReturns)
         
-        const newStock = parseInt(stock);
+        const amount = quantity * (existingPurchase.costPerUnit || 0);
+        const gstCharges = (amount * existingPurchase.gst)/100 
+        const returnAmount = amount + gstCharges 
+        
+        const newStock = parseInt(quantity);
         const oldStock = existingProduct.stock;
         const stockDifference = oldStock - newStock;
 
         if (stockDifference < 0) {
-          return handleResponse(resp,400,"Not enough stock in this product")
+          return handleResponse(resp,404,`Not enough stock! You have ${existingProduct.stock} pcs in the product.`)
         }
 
         existingProduct.stock-=newStock
         await existingProduct.save()
 
-        existingPurchase.returned=true
-        await existingPurchase.save()
+        existingVendor.balance-=returnAmount
+        await existingVendor.save()
         
-        const newReturn = new Return({
-          productId:existingProduct._id,vendorId:existingPurchase.vendorId,vendorName:existingPurchase.vendorName,message,subSubCategory:existingPurchase.subSubCategory,
-          cost:existingPurchase.cost,otherCharges:existingPurchase.otherCharges,date:existingPurchase.date,quantity:newStock,userId:req.user._id
-        })
-        await newReturn.save()
-        return handleResponse(resp,202,"Stock Returned!")
+        if(date){
+          const newReturn = new StockReturn({
+            productId:existingProduct._id,vendorId:existingPurchase.vendorId,vendorName:existingPurchase.vendorName,message,totalAmount:returnAmount,parentStockHistoryId:existingPurchase._id,
+            costPerUnit:existingPurchase.costPerUnit,otherCharges,gst:existingPurchase.gst,gstCharges,date:new Date(date),quantity,userId:req.user._id
+          })
+          await newReturn.save()
+        } else{
+          const newReturn = new StockReturn({
+            productId:existingProduct._id,vendorId:existingPurchase.vendorId,vendorName:existingPurchase.vendorName,message,totalAmount:returnAmount,parentStockHistoryId:existingPurchase._id,
+            costPerUnit:existingPurchase.costPerUnit,otherCharges,gst:existingPurchase.gst,gstCharges,quantity,userId:req.user._id
+          })
+          await newReturn.save()
+        }
+        return handleResponse(resp,201,"Stock Returned!")
       } catch (error) {
         return handleError(resp,error)
       }
@@ -335,7 +182,7 @@ const StockHistoryController={
         const page = parseInt(req.query?.page) || 1;
         const limit = 10;
         
-        const result = await Return.find({productId:existingProduct._id,userId:req.user._id}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate("vendorId","name")
+        const result = await StockReturn.find({productId:existingProduct._id,userId:req.user._id}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate("vendorId","name")
         if(!result || result.length===0) return handleResponse(resp,400,"Return History of this product is empty")
         return handleResponse(resp,202,"Return history loaded successfully",result)
       } catch (error) {
@@ -351,7 +198,7 @@ const StockHistoryController={
         if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list")
         
         const limit = 10;
-        const totalReturns = await Return.countDocuments({ productId: existingProduct._id, userId: req.user._id });
+        const totalReturns = await StockReturn.countDocuments({ productId: existingProduct._id, userId: req.user._id });
         const totalPages = Math.ceil(totalReturns / limit);
         return handleResponse(resp,202,"Return history calculated",{totalReturns,totalPages})
       } catch (error) {
@@ -369,7 +216,7 @@ const StockHistoryController={
         const page = parseInt(req.query?.page) || 1;
         const limit = 10;
         
-        const result = await StockHistory.find({productId:existingProduct._id,userId:req.user._id}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate("vendorId","name")
+        const result = await StockHistory.find({productId:existingProduct._id,userId:req.user._id, type: { $in: ['stock_in', 'stock_return'] } }).sort({ date: -1 }).skip((page - 1) * limit).limit(limit).populate("vendorId","name")
         if(!result || result.length===0) return handleResponse(resp,400,"All History of this product is empty")
         return handleResponse(resp,202,"All history loaded successfully",result)
       } catch (error) {
@@ -385,46 +232,80 @@ const StockHistoryController={
         if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list")
         
         const limit = 10;
-        const totalHistory = await StockHistory.countDocuments({ productId: existingProduct._id, userId: req.user._id });
+        const totalHistory = await StockHistory.countDocuments({ productId: existingProduct._id, userId: req.user._id, type: { $in: ['stock_in', 'stock_return'] } });
         const totalPages = Math.ceil(totalHistory / limit);
         return handleResponse(resp,202,"All history calculated",{totalHistory,totalPages})
       } catch (error) {
         return handleError(resp,error)
       }
     },
-    getAllSales:async(req,resp)=>{
+    createDebitNote:async(req,resp)=>{
       try {
-        const {productId} = req.params
-        if(!productId || !mongoose.isValidObjectId(productId)) return handleResponse(resp,400,"Invalid Product Id")
-        
-        const existingProduct = await Product.findOne({_id:productId,userId:req.user._id})
-        if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list")
-        
-        const page = parseInt(req.query?.page) || 1;
-        const limit = 10;
-        
-        const result = await Sale.find({productId:existingProduct._id,userId:req.user._id}).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate("vendorId","name")
-        if(!result || result.length===0) return handleResponse(resp,400,"Sale History of this product is empty")
-        return handleResponse(resp,202,"Sale history loaded successfully",result)
+      const { vendorId, amount, date, gst, otherCharges, message} = req.body;
+      if(!vendorId || vendorId==="none") return handleResponse(resp,400,"Select the vendor")
+      if(!amount) return handleResponse(resp,400,"Amount is required")
+      if(amount<=0) return handleResponse(resp,400,"Amount should be greator than zero.")
+      if(!message) return handleResponse(resp,400,"Message is required")
+      if(otherCharges<0) return handleResponse(resp,400,"Other Charges is invalid.")
+      if(!gst || ![0,5,12,18,28].includes(gst)) return handleResponse(resp,400,"GST Charges is required or invalid.")
+      if(!mongoose.isValidObjectId(vendorId)) return handleResponse(resp,400,"Invalid Vendor Id.")
+      if(date && !isPastOrToday(date)) return handleResponse(resp,400,"Date must not be in the future.")
+      
+      const existingVendor = await Vendor.findOne({_id:vendorId,userId:req.user._id})
+      if(!existingVendor) return handleResponse(resp,400,"This Vendor is not exists in your list.")
+
+      const gstCharges = (gst / 100) * amount;
+      const totalAmount = parseFloat(amount) + gstCharges
+
+      if (existingVendor.balance < totalAmount) return handleResponse(resp,404,"Insufficient vendor balance to issue debit note");
+
+      existingVendor.balance-=totalAmount
+      await existingVendor.save()
+
+      if(date){
+        const newDebit = new Debit({userId:req.user._id,vendorId:existingVendor._id,date,vendorName:existingVendor.name,totalAmount,gst,gstCharges,otherCharges,message});
+        await newDebit.save();
+      }else{
+        const newDebit = new Debit({userId:req.user._id,vendorId:existingVendor._id,vendorName:existingVendor.name,totalAmount,gst,gstCharges,otherCharges,message});
+        await newDebit.save();
+      }
+      return handleResponse(resp,201,"Debit Note issued")
       } catch (error) {
         return handleError(resp,error)
       }
     },
-    getTotalSalePages:async(req,resp)=>{
+    createCreditNote:async(req,resp)=>{
       try {
-        const {productId} = req.params
-        if(!productId || !mongoose.isValidObjectId(productId)) return handleResponse(resp,400,"Invalid Product Id")
-        
-        const existingProduct = await Product.findOne({_id:productId,userId:req.user._id})
-        if(!existingProduct) return handleResponse(resp,404,"This product is not exists in your list")
-        
-        const limit = 10;
-        const totalSales = await Sale.countDocuments({ productId: existingProduct._id, userId: req.user._id });
-        const totalPages = Math.ceil(totalSales / limit);
-        return handleResponse(resp,202,"Sale history calculated",{totalSales,totalPages})
+      const { vendorId, amount, date, gst, otherCharges, message} = req.body;
+      if(!vendorId || vendorId==="none") return handleResponse(resp,400,"Select the vendor")
+      if(!amount) return handleResponse(resp,400,"Amount is required")
+      if(amount<=0) return handleResponse(resp,400,"Amount should be greator than zero.")
+      if(!message) return handleResponse(resp,400,"Message is required")
+      if(otherCharges<0) return handleResponse(resp,400,"Other Charges is invalid.")
+      if(!gst || ![0,5,12,18,28].includes(gst)) return handleResponse(resp,400,"GST Charges is required or invalid.")
+      if(!mongoose.isValidObjectId(vendorId)) return handleResponse(resp,400,"Invalid Vendor Id.")
+      if(date && !isPastOrToday(date)) return handleResponse(resp,400,"Date must not be in the future.")
+      
+      const existingVendor = await Vendor.findOne({_id:vendorId,userId:req.user._id})
+      if(!existingVendor) return handleResponse(resp,400,"This Vendor is not exists in your list.")
+
+      const gstCharges = (gst / 100) * amount;
+      const totalAmount = parseFloat(amount) + gstCharges
+
+      existingVendor.balance+=totalAmount
+      await existingVendor.save()
+
+      if(date){
+        const newCredit = new Credit({userId:req.user._id,vendorId:existingVendor._id,date,vendorName:existingVendor.name,totalAmount,gst,gstCharges,otherCharges,message});
+        await newCredit.save();
+      }else{
+        const newCredit = new Credit({userId:req.user._id,vendorId:existingVendor._id,vendorName:existingVendor.name,totalAmount,gst,gstCharges,otherCharges,message});
+        await newCredit.save();
+      }
+      return handleResponse(resp,201,"Credit Note issued")
       } catch (error) {
         return handleError(resp,error)
       }
-    },
+    }
 }
 module.exports=StockHistoryController

@@ -7,19 +7,14 @@ const Vendor = require("../../../Model/VendorModel/VendorModel");
 const VendorController={
     createVendor:async(req,resp)=>{
         try {
-          const {subSubCategory}=req.params
           const {name}=req.body
       
-          if(!subSubCategory || !mongoose.isValidObjectId(subSubCategory)) return handleResponse(resp,404,"Invalid Category Id")
           if(!name) return handleResponse(resp,404,"Vendor name is required")
-      
-          const existingSubSubCategory=await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id})
-          if(!existingSubSubCategory) return handleResponse(resp,404,"This category is not found in your list")
           
-          const existingVendor=await Vendor.findOne({subSubCategory,name,userId:req.user._id})
+          const existingVendor=await Vendor.findOne({name,userId:req.user._id})
           if(existingVendor) return handleResponse(resp,400,"Vendor related to this name already exists")
           
-          const newVendor= new Vendor({name,subSubCategory,userId:req.user._id})
+          const newVendor= new Vendor({name,userId:req.user._id})
           await newVendor.save()
           return handleResponse(resp,201,"Vendor created successfully")
         } catch (error) {
@@ -28,13 +23,7 @@ const VendorController={
       },
     getAllVendors:async(req,resp)=>{
         try {
-          const {subSubCategory}=req.params
-          if(!subSubCategory || !mongoose.isValidObjectId(subSubCategory)) return handleResponse(resp,404,"Invalid Category Id")
-      
-          const existingSubSubCategory=await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id}).select("-image -mainCategory -subCategory")
-          if(!existingSubSubCategory) return handleResponse(resp,404,"This category is not found in your list")
-          
-          const allVendors=await Vendor.find({subSubCategory,userId:req.user._id})
+          const allVendors=await Vendor.find({userId:req.user._id})
           if(!allVendors || allVendors.length===0) return handleResponse(resp,404,"Vendor list is empty")
           return handleResponse(resp,202,"All Vendor fetched successfully",allVendors)
         } catch (error) {
@@ -57,13 +46,7 @@ const VendorController={
       },
     deleteAllVendors:async(req,resp)=>{
         try {
-          const {subSubCategory}=req.params
-          if(!subSubCategory || !mongoose.isValidObjectId(subSubCategory)) return handleResponse(resp,404,"Invalid Category Id")
-      
-          const existingSubSubCategory=await SubSubCategory.findOne({_id:subSubCategory,userId:req.user._id}).select("-image")
-          if(!existingSubSubCategory) return handleResponse(resp,404,"This Category is not exists in your list.")
-          
-          const result=await Vendor.deleteMany({subSubCategory:existingSubSubCategory._id,userId:req.user._id})
+          const result=await Vendor.deleteMany({userId:req.user._id})
           return handleResponse(resp,202,`${result.deletedCount} Vendors deleted!`)
         } catch (error) {
           return handleError(resp,error)

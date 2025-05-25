@@ -1,5 +1,6 @@
 const mongoose=require("mongoose")
 const fs=require("fs")
+const path=require("path")
 require("dotenv").config()
 const {MainCategory,SubCategory} = require("../../../../Model/CategoryModel/CategoryModel");
 const {handleResponse,handleError}=require("../../../../Responses/Responses");
@@ -10,30 +11,30 @@ const SubCategoryController={
         try {
           const { name } = req.body;
           const { mainCategory } = req.params;
-      
+          const filePath = req.file?path.join(__dirname, '..', 'uploads', 'Category', 'SubCategory', String(userId), req.file.filename):null;
           if (!name) {
-            if (req.file) fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if name is missing
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 404, "Category Name is required");
           }
           if(!mainCategory){
-            if (req.file) fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if parentCategory is missing
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 404, "Main Category id is required");
           }
           if(!mongoose.isValidObjectId(mainCategory)){
-            if (req.file) fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if parentCategory is missing
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 400, "Main Category id is invalid");
           }
       
           const existingMainCategory = await MainCategory.findOne({ _id:mainCategory,userId }).select("-image");
           if (!existingMainCategory) {
-            if(req.file) fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 405, "The Main Category of this is not exists in your list");
           }
       
           // Check if category already exists
           const existingSubCategory = await SubCategory.findOne({ name,mainCategory:existingMainCategory._id,userId });
           if (existingSubCategory) {
-            if(req.file) fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 405, "This Category already exists in your list");
           }
       
@@ -58,7 +59,8 @@ const SubCategoryController={
           return handleResponse(resp, 201, `Category of ${existingMainCategory?.name} created successfully`, newCategory);
       
         } catch (error) {
-          if (req.file) fs.unlinkSync(`uploads/Category/SubCategory/${userId}/${req.file.filename}`); // Delete image if an error occurs
+          const filePath=req.file?path.join(__dirname, '..', 'uploads', 'Category', 'SubCategory', String(userId), req.file.filename):null;
+          if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
           return handleError(resp, error);
         }
       },

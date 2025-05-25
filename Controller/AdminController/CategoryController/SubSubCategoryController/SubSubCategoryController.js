@@ -1,5 +1,6 @@
 const mongoose=require("mongoose")
 const fs=require("fs")
+const path=require("path")
 require("dotenv").config()
 const {SubCategory,SubSubCategory} = require("../../../../Model/CategoryModel/CategoryModel");
 const {handleResponse,handleError}=require("../../../../Responses/Responses");
@@ -12,33 +13,34 @@ const SubSubCategoryController={
           const { name,isSize } = req.body;
           const { subCategory } = req.params
       
+          const filePath=req.file?path.join(__dirname, '..', 'uploads', 'Category', 'SubSubCategory', String(userId), req.file.filename):null;
           if (!name) {
-            if (req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if name is missing
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 404, "Category Name is required");
           }
           if(!subCategory){
-            if (req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if parentCategory is missing
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 404, "Sub Category Id is required");
           }
           if(!mongoose.isValidObjectId(subCategory)){
-            if (req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if parentCategory is missing
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 400, "Sub Category Id is invalid");
           }
           if (isSize && typeof JSON.parse(isSize) !== 'boolean'){
-            if (req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if parentCategory is missing
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 400, "Invalid Size Criteria");
           }
       
           const existingSubCategory = await SubCategory.findOne({ _id:subCategory,userId }).select("-image");
           if (!existingSubCategory) {
-            if(req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 405, "The Sub Category of this is not exists in your list");
           }
       
           // Check if category already exists
           const existingSubSubCategory = await SubSubCategory.findOne({ name,subCategory:existingSubCategory._id,mainCategory:existingSubCategory.mainCategory,userId });
           if (existingSubSubCategory) {
-            if(req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 405, "This Category already exists in your list");
           }
       
@@ -66,7 +68,8 @@ const SubSubCategoryController={
           await newCategory.save();
           return handleResponse(resp, 201, `Category of ${existingSubCategory?.name} created successfully`, newCategory);
         } catch (error) {
-          if (req.file) fs.unlinkSync(`uploads/Category/SubSubCategory/${userId}/${req.file.filename}`); // Delete image if an error occurs
+          const filePath=req.file?path.join(__dirname, '..', 'uploads', 'Category', 'SubSubCategory', String(userId), req.file.filename):null;
+          if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
           return handleError(resp, error);
         }
       },

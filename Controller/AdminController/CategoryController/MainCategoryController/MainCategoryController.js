@@ -1,4 +1,5 @@
 const fs=require("fs")
+const path=require("path")
 require("dotenv").config()
 const { MainCategory } = require("../../../../Model/CategoryModel/CategoryModel");
 const {handleResponse,handleError}=require("../../../../Responses/Responses");
@@ -9,15 +10,16 @@ const MainCategoryController={
         try {
           const { name } = req.body;
       
+          const filePath = req.file? path.join(__dirname, '..', 'uploads', 'Category', 'MainCategory', String(userId), req.file.filename):null;
           if (!name) {
-            if (req.file) fs.unlinkSync(`uploads/Category/MainCategory/${userId}/${req.file.filename}`); // Delete uploaded image if name is missing
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 404, "Category Name is required");
           }
       
           // Check if category already exists
           const existingMainCategory = await MainCategory.findOne({ name,userId });
           if (existingMainCategory) {
-            if(req.file) fs.unlinkSync(`uploads/Category/MainCategory/${userId}/${req.file.filename}`); // Delete uploaded image if category exists
+            if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
             return handleResponse(resp, 405, "This Category already exists in your list");
           }
       
@@ -40,7 +42,8 @@ const MainCategoryController={
           return handleResponse(resp, 201, "Category created successfully", newCategory);
       
         } catch (error) {
-          if (req.file) fs.unlinkSync(`uploads/Category/MainCategory/${userId}/${req.file.filename}`); // Delete image if an error occurs
+          const filePath=req.file?path.join(__dirname, '..', 'uploads', 'Category', 'MainCategory', String(userId), req.file.filename):null;
+          if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
           return handleError(resp, error);
         }
     },
