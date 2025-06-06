@@ -1,6 +1,5 @@
 const mongoose=require("mongoose")
 require("dotenv").config()
-const { SubSubCategory } = require("../../../Model/CategoryModel/CategoryModel");
 const {handleResponse,handleError}=require("../../../Responses/Responses");
 const Vendor = require("../../../Model/VendorModel/VendorModel");
 
@@ -21,6 +20,18 @@ const VendorController={
           return handleError(resp,error)
         }
       },
+    getVendor:async (req,resp)=> {
+        try {
+          const {vendorId}=req.params
+          if(!vendorId || !mongoose.isValidObjectId(vendorId)) return handleResponse(resp,400,"Invalid Vendor Id")
+      
+          const existingVendor=await Vendor.findOne({_id:vendorId,userId:req.user._id})
+          if(!existingVendor) return handleResponse(resp,400,"This vendor is not exists in your list.")
+          return handleResponse(resp,202,"Vendor fetched successfully!",existingVendor)
+          } catch (error) {
+          return handleError(resp,error)
+        }
+      },
     getAllVendors:async(req,resp)=>{
         try {
           const allVendors=await Vendor.find({userId:req.user._id})

@@ -128,6 +128,7 @@ Routes.put("/updateProduct/:subSubCategory/:productId",adminChecker,ProductContr
 
 // vendors (admin)
 Routes.post("/createVendor",adminChecker,VendorController.createVendor)
+Routes.get("/getVendor/:vendorId",adminChecker,VendorController.getVendor)
 Routes.get("/getAllVendors",adminChecker,VendorController.getAllVendors)
 Routes.delete("/deleteVendor/:vendorId",adminChecker,VendorController.deleteVendor)
 Routes.delete("/deleteAllVendors",adminChecker,VendorController.deleteAllVendors)
