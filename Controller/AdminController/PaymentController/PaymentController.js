@@ -56,24 +56,34 @@ const PaymentController={
             const now = new Date();
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-            const stockEntries = await StockHistory.find({userId:req.user._id, vendorId, date: { $gte: startOfMonth } }).sort({ date: 1 }).lean();
+            const stockEntries = await StockHistory.find({userId:req.user._id, vendorId, date: { $gte: startOfMonth } }).populate('productId','name').sort({ date: 1 }).lean();
             const paymentEntries = await Payment.find({userId:req.user._id, vendorId, date: { $gte: startOfMonth } }).sort({ date: 1 }).lean();
 
             const normalizedStock = stockEntries.map(e => ({
                 date: e.date,
-                description: e.message || e.type,
+                description:e.type.toUpperCase()+(e.message?": "+e.message:" "),
                 debit: ['stock_in', 'debit_note'].includes(e.type) ? e.totalAmount : 0,
                 credit: ['stock_return', 'credit_note'].includes(e.type) ? e.totalAmount : 0,
                 type: e.type,
+                data:{
+                    productName:e.productId?.name || null,
+                    quantity:e.quantity || null,
+                    costPerUnit:e.costPerUnit || 0,
+                    totalAmount:e.totalAmount || 0,
+                    otherCharges:e.otherCharges || 0,
+                    gst:e.gst || 0,
+                    gstCharges:e.gstCharges || 0 
+                }
             }));
 
             const normalizedPayments = paymentEntries.map(e => ({
                 date: e.date,
-                description: e.message || 'Payment to vendor',
+                description: 'Payment'+(e.message?": "+e.message:""),
                 method:e.method,
                 debit: 0,
                 credit: e.amount,
                 type: 'payment',
+                message:e.message || "N/A"
             }));
             
             const combined = [...normalizedStock, ...normalizedPayments].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -83,7 +93,7 @@ const PaymentController={
                 balance += (entry.debit || 0) - (entry.credit || 0);
                 return { ...entry, balance };
             });
-
+            if (ledger.length === 0) return handleResponse(resp, 400, "No records found for this period");
             return handleResponse(resp,202,"Account ledger is fetched",ledger)
         } catch (error) {
             return handleError(resp,error)
@@ -94,24 +104,34 @@ const PaymentController={
             const { vendorId } = req.params;
             const { start, end } = getFinancialYearRange();
 
-            const stockEntries = await StockHistory.find({userId:req.user._id,vendorId,date: { $gte: start, $lt: end }}).sort({ date: 1 }).lean();
+            const stockEntries = await StockHistory.find({userId:req.user._id,vendorId,date: { $gte: start, $lt: end }}).populate('productId','name').sort({ date: 1 }).lean();
             const paymentEntries = await Payment.find({userId:req.user._id,vendorId,date: { $gte: start, $lt: end }}).sort({ date: 1 }).lean();
 
             const normalizedStock = stockEntries.map(e => ({
                 date: e.date,
-                description: e.message || e.type,
+                description:e.type.toUpperCase()+(e.message?": "+e.message:" "),
                 debit: ['stock_in', 'debit_note'].includes(e.type) ? e.totalAmount : 0,
                 credit: ['stock_return', 'credit_note'].includes(e.type) ? e.totalAmount : 0,
                 type: e.type,
+                data:{
+                    productName:e.productId?.name || null,
+                    quantity:e.quantity || null,
+                    costPerUnit:e.costPerUnit || 0,
+                    totalAmount:e.totalAmount || 0,
+                    otherCharges:e.otherCharges || 0,
+                    gst:e.gst || 0,
+                    gstCharges:e.gstCharges || 0 
+                }
             }));
 
             const normalizedPayments = paymentEntries.map(e => ({
                 date: e.date,
-                description: e.message || 'Payment to vendor',
+                description: 'Payment'+(e.message?": "+e.message:""),
                 method:e.method,
                 debit: 0,
                 credit: e.amount,
                 type: 'payment',
+                message:e.message || "N/A"
             }));
 
             const combined = [...normalizedStock, ...normalizedPayments].sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -121,7 +141,7 @@ const PaymentController={
                 balance += (entry.debit || 0) - (entry.credit || 0);
                 return { ...entry, balance };
             });
-
+            if (ledger.length === 0) return handleResponse(resp, 400, "No records found for this period");
             return handleResponse(resp,202,"Account ledger is fetched",ledger)
         } catch (error) {
             return handleError(resp,error)

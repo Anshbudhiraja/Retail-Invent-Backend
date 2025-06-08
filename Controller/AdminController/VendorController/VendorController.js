@@ -34,7 +34,7 @@ const VendorController={
       },
     getAllVendors:async(req,resp)=>{
         try {
-          const allVendors=await Vendor.find({userId:req.user._id})
+          const allVendors=await Vendor.find({userId:req.user._id}).lean()
           if(!allVendors || allVendors.length===0) return handleResponse(resp,404,"Vendor list is empty")
           return handleResponse(resp,202,"All Vendor fetched successfully",allVendors)
         } catch (error) {
