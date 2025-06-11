@@ -52,12 +52,16 @@ const PaymentController={
     getCurrentMonthLedger:async(req,resp)=>{
         try {
             const { vendorId } = req.params;
+            if(!vendorId || !mongoose.isValidObjectId(vendorId)) return handleResponse(resp,400,"Invalid Vendor Id")
+                
+            const existingVendor = await Vendor.findOne({_id:vendorId,userId:req.user._id})
+            if(!existingVendor) return handleResponse(resp,400,"This Vendor is not exists in your list.")
 
             const now = new Date();
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-            const stockEntries = await StockHistory.find({userId:req.user._id, vendorId, date: { $gte: startOfMonth } }).populate('productId','name').sort({ date: 1 }).lean();
-            const paymentEntries = await Payment.find({userId:req.user._id, vendorId, date: { $gte: startOfMonth } }).sort({ date: 1 }).lean();
+            const stockEntries = await StockHistory.find({userId:req.user._id, vendorId:existingVendor._id, date: { $gte: startOfMonth } }).populate('productId','name').sort({ date: 1 }).lean();
+            const paymentEntries = await Payment.find({userId:req.user._id, vendorId:existingVendor._id, date: { $gte: startOfMonth } }).sort({ date: 1 }).lean();
 
             const normalizedStock = stockEntries.map(e => ({
                 date: e.date,
@@ -102,10 +106,15 @@ const PaymentController={
     getFinancialYearLedger:async(req,resp)=>{
         try {
             const { vendorId } = req.params;
+            if(!vendorId || !mongoose.isValidObjectId(vendorId)) return handleResponse(resp,400,"Invalid Vendor Id")
+                
+            const existingVendor = await Vendor.findOne({_id:vendorId,userId:req.user._id})
+            if(!existingVendor) return handleResponse(resp,400,"This Vendor is not exists in your list.")
+
             const { start, end } = getFinancialYearRange();
 
-            const stockEntries = await StockHistory.find({userId:req.user._id,vendorId,date: { $gte: start, $lt: end }}).populate('productId','name').sort({ date: 1 }).lean();
-            const paymentEntries = await Payment.find({userId:req.user._id,vendorId,date: { $gte: start, $lt: end }}).sort({ date: 1 }).lean();
+            const stockEntries = await StockHistory.find({userId:req.user._id,vendorId:existingVendor._id,date: { $gte: start, $lt: end }}).populate('productId','name').sort({ date: 1 }).lean();
+            const paymentEntries = await Payment.find({userId:req.user._id,vendorId:existingVendor._id,date: { $gte: start, $lt: end }}).sort({ date: 1 }).lean();
 
             const normalizedStock = stockEntries.map(e => ({
                 date: e.date,
